@@ -8,6 +8,8 @@ from logic_utils import (
     parse_guess,
     check_guess,
     update_score,
+    # CHALLENGE 4 (Enhanced UI): cosmetic Hot/Cold proximity helper.
+    get_proximity,
 )
 
 st.set_page_config(page_title="Glitchy Guesser", page_icon="🎮")
@@ -34,6 +36,29 @@ low, high = get_range_for_difficulty(difficulty)
 
 st.sidebar.caption(f"Range: {low} to {high}")
 st.sidebar.caption(f"Attempts allowed: {attempt_limit}")
+
+
+# CHALLENGE 4 (Enhanced UI): a single, reusable renderer for the live
+# scoreboard + a per-guess summary table. It only reads session state, so it's
+# safe to call both mid-game and on the frozen win/lose screen.
+def render_session_summary():
+    st.divider()
+    st.subheader("📊 Session Summary")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Score", st.session_state.score)
+    col2.metric("Guesses made", len(st.session_state.history))
+    col3.metric(
+        "Attempts left",
+        max(0, attempt_limit - st.session_state.attempts),
+    )
+
+    if st.session_state.history:
+        # st.session_state.history holds one dict per guess (see below), so
+        # Streamlit renders it as a clean, color-free table of the whole run.
+        st.table(st.session_state.history)
+    else:
+        st.caption("No guesses yet — make your first guess above! 👆")
 
 if "secret" not in st.session_state:
     st.session_state.secret = random.randint(low, high)
@@ -98,6 +123,9 @@ if st.session_state.status != "playing":
         st.success("You already won. Start a new game to play again.")
     else:
         st.error("Game over. Start a new game to try again.")
+    # CHALLENGE 4 (Enhanced UI): still show the full recap on the frozen
+    # end screen so players can review every guess they made.
+    render_session_summary()
     st.stop()
 
 # FIX: I noticed the history/attempts lagged one click behind; the AI agent
@@ -112,15 +140,37 @@ if submit:
     ok, guess_int, err = parse_guess(raw_guess)
 
     if not ok:
-        st.session_state.history.append(raw_guess)
+        # CHALLENGE 4 (Enhanced UI): history rows are dicts so the Session
+        # Summary table has labeled columns. Invalid input still gets a row.
+        st.session_state.history.append(
+            {
+                "#": st.session_state.attempts,
+                "Guess": raw_guess,
+                "Result": "⚠️ Invalid",
+                "Proximity": "—",
+            }
+        )
         result = ("error", err)
     else:
-        st.session_state.history.append(guess_int)
-
         # FIX: AI caught that the secret was being cast to str() on even
         # attempts, breaking the comparison; we now always pass the raw int.
         # Found via agent-mode review, I verified and kept it.
         outcome, message = check_guess(guess_int, st.session_state.secret)
+
+        # CHALLENGE 4 (Enhanced UI): cosmetic Hot/Cold read-out. Kept fully
+        # separate from check_guess/update_score so it can't alter game logic.
+        prox_label, prox_emoji = get_proximity(
+            guess_int, st.session_state.secret, low, high
+        )
+
+        st.session_state.history.append(
+            {
+                "#": st.session_state.attempts,
+                "Guess": guess_int,
+                "Result": outcome,
+                "Proximity": f"{prox_emoji} {prox_label}",
+            }
+        )
 
         st.session_state.score = update_score(
             current_score=st.session_state.score,
@@ -145,7 +195,9 @@ if submit:
                 f"Score: {st.session_state.score}",
             )
         else:
-            result = ("hint", message)
+            # CHALLENGE 4 (Enhanced UI): bolt the Hot/Cold emoji onto the
+            # color-coded direction hint, e.g. "👆 Go HIGHER!  ·  🔥 Burning hot".
+            result = ("hint", f"{message}  ·  {prox_emoji} {prox_label}")
 
 # Render up-to-date state now that the guess has been processed.
 st.info(
@@ -161,6 +213,9 @@ if result is not None:
         st.error(text)
     elif kind == "hint" and show_hint:
         st.warning(text)
+
+# CHALLENGE 4 (Enhanced UI): live scoreboard + per-guess recap table.
+render_session_summary()
 
 st.divider()
 st.caption("Built by an AI that claims this code is production-ready.")

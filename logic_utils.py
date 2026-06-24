@@ -60,6 +60,34 @@ def check_guess(guess, secret):
         return "Too Low", "👆 Go HIGHER!"
 
 
+# CHALLENGE 4 (Enhanced UI): cosmetic "Hot/Cold" proximity feedback.
+# This is intentionally kept separate from check_guess so it can NEVER change
+# the win/lose outcome or the high/low direction the regression tests lock in
+# -- it only describes HOW CLOSE the guess is, not which way to go.
+def get_proximity(guess: int, secret: int, low: int, high: int):
+    """
+    Return (label, emoji) describing how close `guess` is to `secret`,
+    scaled to the size of the active range so "hot" means the same thing
+    on Easy (1-20) and Normal (1-100).
+
+    Purely cosmetic: does not affect scoring or the Too High / Too Low result.
+    """
+    span = max(1, high - low)
+    ratio = abs(guess - secret) / span
+
+    if ratio == 0:
+        return "Bullseye", "🎯"
+    if ratio <= 0.05:
+        return "Burning hot", "🔥"
+    if ratio <= 0.15:
+        return "Hot", "🌶️"
+    if ratio <= 0.30:
+        return "Warm", "♨️"
+    if ratio <= 0.50:
+        return "Cool", "❄️"
+    return "Freezing", "🧊"
+
+
 def update_score(current_score: int, outcome: str, attempt_number: int):
     """Update score based on outcome and attempt number."""
     if outcome == "Win":
